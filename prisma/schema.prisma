@@ -1,0 +1,1535 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["views"]
+}
+
+generator comments {
+  provider                  = "prisma-db-comments-generator"
+  ignorePattern             = "_view$"
+  includeEnumInFieldComment = true
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 商品タイプ列挙型
+enum ProductType {
+  /// 書籍 - 小説実用書技術書など
+  BOOK
+  /// おもちゃ - 知育玩具フィギュアなど
+  TOY
+  /// ファッション - 衣類アクセサリーなど
+  FASHION
+
+  @@map("enum_product_type")
+}
+
+/// 顧客情報テーブル
+model Customer {
+  /// 顧客ID - 一意識別子
+  customerId Int      @id @default(autoincrement()) @map("customer_id")
+  /// 顧客名 - お客様のお名前
+  name       String
+  /// メールアドレス - 連絡先メール
+  email      String   @unique
+  /// 年齢 - お客様の年齢（任意）
+  age        Int?
+  /// 住所 - お客様の住所（都道府県市区町村番地）
+  /// 配送先住所や請求書送付先として使用される顧客の住所情報
+  /// 郵便番号都道府県市区町村番地・建物名を含む完全な住所を格納
+  address    String?
+  /// 電話番号 - 連絡先電話番号（ハイフンあり/なし両対応）
+  /// 緊急連絡や配送時の連絡に使用される電話番号
+  /// 固定電話携帯電話どちらでも対応し国際番号も格納可能
+  phone      String?
+  /// 作成日時 - システムで自動生成される作成タイムスタンプ（マルチバイト文字テスト：あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん）
+  createdAt  DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt  DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 売上データ
+  sales      Sale[]
+  /// レビューデータ
+  reviews    Review[]
+  /// 顧客Aランクデータ
+  customerRanks CustomerRank[]
+  /// イベント参加データ
+  eventParticipants EventParticipant[]
+
+  @@map("customers")
+}
+
+/// 商品情報テーブル（商品の詳細情報を管理）
+/// このテーブルは企業が販売する全ての商品・サービスに関する包括的な情報を
+/// 一元管理するためのマスターデータです商品名価格在庫数カテゴリ
+/// 商品説明などの詳細情報を含みECサイトや店舗での販売活動を支援します
+/// 価格変動の履歴管理在庫管理システムとの連携商品検索機能の実現などに活用されます
+/// 特に日本語の商品名や説明文カテゴリ分類においては文字化けを防ぐために
+/// UTF-8エンコーディングでの適切な管理が重要です
+model Product {
+  /// 商品ID - 商品の一意識別子
+  /// 各商品を一意に識別するための自動生成される連番ID
+  /// 商品マスターの基本キーとして機能し他のテーブルからの参照に使用
+  /// 商品廃止時も削除せずフラグ管理により論理削除を推奨
+  productId   Int         @id @default(autoincrement()) @map("product_id")
+  /// 商品名 - 商品の名称（日本語英語記号対応）
+  /// 顧客が認識しやすい商品名を格納SEO対策としてキーワードを含むことも推奨
+  /// 日本語英語その他の言語に対応し特殊文字・記号も含めて最大500文字まで
+  /// 検索性を高めるため読み仮名やタグ機能との連携も検討
+  name        String
+  /// 商品タイプ - 商品の種別分類
+  type        ProductType
+  /// 商品説明 - 商品の詳細説明文（改行特殊文字対応）
+  description String?
+  /// 価格（円） - 商品の価格（税込み）
+  price       Float
+  /// 在庫数 - 現在の在庫数量
+  stock       Int         @default(0)
+  /// 特別価格フラグ - セール対象商品の場合true
+  isSpecial   Boolean     @default(false) @map("is_special")
+  /// 作成日時
+  createdAt   DateTime    @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime    @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 売上データ
+  sales       Sale[]
+  /// 在庫データ
+  inventory   Inventory[]
+  /// 発注明細データ
+  orderDetails OrderDetail[]
+  /// レビューデータ
+  reviews     Review[]
+  /// 在庫移動履歴データ
+  inventoryMovements InventoryMovement[]
+  /// 品質管理データ
+  qualityControls QualityControl[]
+  /// 売上予測データ
+  salesForecasts SalesForecast[]
+  /// 季節性分析データ
+  seasonalityAnalyses SeasonalityAnalysis[]
+
+  @@map("products")
+}
+
+/// 売上データテーブル（売上管理と分析のための包括的なデータ管理）
+/// このテーブルは企業の売上に関する全ての取引情報を記録し
+/// 売上分析顧客動向分析商品パフォーマンス分析などのビジネス
+/// インテリジェンスの基盤となる重要なデータを管理します
+/// 顧客別売上商品別売上時系列売上推移季節性分析など
+/// 多角的な分析に活用され経営判断の根拠となります
+/// 特に日本語での分析レポートや帳票出力において
+/// 文字化けなく正確な情報提供が求められる重要なテーブルです
+/// 税制改正消費税率変更キャンペーン効果測定など
+/// 日本特有のビジネス要件にも対応する必要があります
+model Sale {
+  /// 売上ID - 売上取引の一意識別子
+  /// 各売上取引を一意に識別するための自動生成される連番ID
+  /// 売上レポート返品処理修正処理などで参照される重要なキー
+  /// 会計システムや経理システムとの連携時にも使用されます
+  saleId     Int      @id @default(autoincrement()) @map("sale_id")
+  /// 顧客情報 - 購入したお客様の情報
+  /// 売上に関連する顧客情報への参照顧客分析の基盤となる重要な関連
+  /// 顧客ロイヤリティ分析リピート率計算顧客生涯価値算出に活用
+  customer   Customer @relation(fields: [customerId], references: [customerId])
+  /// 顧客ID - 顧客テーブルへの外部キー
+  /// 顧客情報テーブルとの関連を示す外部キー
+  /// 顧客別売上集計顧客セグメント分析などに使用される重要な項目
+  customerId Int      @map("customer_id")
+  /// 商品情報 - 販売された商品の情報
+  /// 売上に関連する商品情報への参照商品分析の基盤となる重要な関連
+  /// 商品別売上分析在庫回転率計算商品パフォーマンス評価に活用
+  product    Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID - 商品テーブルへの外部キー
+  /// 商品情報テーブルとの関連を示す外部キー
+  /// 商品別売上集計ABC分析商品ランキング作成などに使用される重要な項目
+  productId  Int      @map("product_id")
+  /// 担当従業員 - 販売を担当した従業員の情報
+  /// 売上に関連する従業員情報への参照従業員評価の基盤となる重要な関連
+  /// 従業員別売上分析インセンティブ計算営業成績評価に活用
+  employee   Employee @relation(fields: [employeeId], references: [employeeId])
+  /// 従業員ID - 従業員テーブルへの外部キー
+  /// 従業員情報テーブルとの関連を示す外部キー
+  /// 従業員別売上集計営業成績分析チーム成績評価などに使用される重要な項目
+  employeeId Int      @map("employee_id")
+  /// 数量 - 販売数量（個セットパック等の単位）
+  /// 販売された商品の数量を記録在庫管理との連携で重要な情報
+  /// 数量分析平均購入数分析バルク購入傾向分析に活用
+  /// 返品時は負数で記録し正確な在庫管理を実現
+  quantity   Int
+  /// 合計価格 - 売上金額（税抜き）
+  /// 販売された商品の合計金額を記録財務分析の基盤となる重要な情報
+  /// 売上高集計利益率計算予算実績比較分析に活用
+  /// 消費税は別途計算し正確な売上高の把握が重要
+  totalPrice Float    @map("total_price")
+  /// 割引率 - 適用された割引率（パーセンテージ）
+  /// 販売時に適用された割引率を記録プロモーション効果分析に活用
+  /// 季節セール会員割引数量割引など様な割引制度に対応
+  /// 割引効果の測定利益率への影響分析価格戦略立案に重要な情報
+  discount   Float    @default(0.0)
+  /// 売上日時 - 売上が発生した日時
+  /// 売上取引が発生した正確な日時を記録時系列分析の基盤となる重要な情報
+  /// 売上トレンド分析季節性分析時間帯別売上分析に活用
+  /// タイムゾーン考慮したタイムスタンプでグローバル展開時にも対応
+  createdAt  DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 配送データ
+  deliveries Delivery[]
+  /// 支払データ
+  payments   Payment[]
+  /// 返品データ
+  returns    Return[]
+
+  @@map("sales")
+}
+
+/// 顧客売上サマリビュー
+view CustomerSaleSummaryView {
+  /// 顧客ID
+  customerId         Int    @id @map("customer_id")
+  /// 顧客名
+  name               String
+  /// 合計購入金額
+  totalPurchasePrice Int    @map("total_purchase_price")
+  /// 購入回数
+  purchaseCount      Int    @map("purchase_count")
+
+  @@map("customer_sale_summaries_view")
+}
+
+/// カテゴリ情報テーブル（商品分類管理）
+model Category {
+  /// カテゴリID
+  categoryId  Int    @id @default(autoincrement()) @map("category_id")
+  /// カテゴリ名 - 商品の分類名
+  name        String
+  /// 説明 - カテゴリの詳細説明
+  description String?
+  /// 親カテゴリID - 階層構造用
+  parentId    Int?   @map("parent_id")
+  /// 親カテゴリ
+  parent      Category? @relation("CategoryParent", fields: [parentId], references: [categoryId])
+  /// 子カテゴリ
+  children    Category[] @relation("CategoryParent")
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+
+  @@map("categories")
+}
+
+/// 従業員情報テーブル（スタッフ管理）
+model Employee {
+  /// 従業員ID - 社員番号
+  employeeId    Int       @id @default(autoincrement()) @map("employee_id")
+  /// 従業員名 - 姓名（漢字・ひらがな・カタカナ対応）
+  name          String
+  /// メールアドレス - 社内メール
+  email         String    @unique
+  /// 部署名 - 所属部署
+  department    String
+  /// 役職 - 職位・役職名
+  position      String
+  /// 給与 - 月給（円）
+  salary        Float?
+  /// 入社日 - 入社年月日
+  hireDate      DateTime  @map("hire_date") @db.Date
+  /// 退社日 - 退職年月日（在職中はnull）
+  terminateDate DateTime? @map("terminate_date") @db.Date
+  /// 電話番号 - 内線番号
+  phone         String?
+  /// 住所 - 自宅住所
+  address       String?
+  /// 緊急連絡先 - 緊急時の連絡先
+  emergencyContact String? @map("emergency_contact")
+  /// 作成日時
+  createdAt     DateTime  @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime  @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 売上担当データ
+  sales         Sale[]
+
+  @@map("employees")
+}
+
+/// 店舗情報テーブル（店舗管理）
+model Store {
+  /// 店舗ID - 店舗識別子
+  storeId     Int      @id @default(autoincrement()) @map("store_id")
+  /// 店舗名 - 店舗の名称
+  name        String
+  /// 住所 - 店舗の所在地（都道府県市区町村番地）
+  address     String
+  /// 電話番号 - 店舗の電話番号
+  phone       String
+  /// 営業時間 - 開店・閉店時間
+  businessHours String @map("business_hours")
+  /// 店長名 - 責任者名
+  managerName String   @map("manager_name")
+  /// 面積 - 店舗面積（平方メートル）
+  area        Float?
+  /// 駐車場 - 駐車可能台数
+  parking     Int?
+  /// 開店日 - 開店年月日
+  openDate    DateTime @map("open_date") @db.Date
+  /// 閉店日 - 閉店年月日（営業中はnull）
+  closeDate   DateTime? @map("close_date") @db.Date
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 在庫データ
+  inventory   Inventory[]
+  /// 在庫移動履歴データ（移動元）
+  inventoryMovementsFrom InventoryMovement[] @relation("FromStore")
+  /// 在庫移動履歴データ（移動先）
+  inventoryMovementsTo InventoryMovement[] @relation("ToStore")
+  /// 売上予測データ
+  salesForecasts SalesForecast[]
+
+  @@map("stores")
+}
+
+/// 在庫情報テーブル（商品在庫管理）
+model Inventory {
+  /// 在庫ID - 在庫識別子
+  inventoryId Int     @id @default(autoincrement()) @map("inventory_id")
+  /// 店舗情報
+  store       Store   @relation(fields: [storeId], references: [storeId])
+  /// 店舗ID
+  storeId     Int     @map("store_id")
+  /// 商品情報
+  product     Product @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId   Int     @map("product_id")
+  /// 在庫数 - 現在の在庫数量
+  quantity    Int
+  /// 最小在庫数 - 発注点
+  minStock    Int     @map("min_stock")
+  /// 最大在庫数 - 最大保管数
+  maxStock    Int     @map("max_stock")
+  /// 最終入荷日 - 最後に入荷した日付
+  lastRestockDate DateTime? @map("last_restock_date") @db.Date
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("inventory")
+}
+
+/// 仕入先情報テーブル（サプライヤー管理）
+model Supplier {
+  /// 仕入先ID - 仕入先識別子
+  supplierId  Int      @id @default(autoincrement()) @map("supplier_id")
+  /// 仕入先名 - 会社名・店舗名
+  name        String
+  /// 代表者名 - 代表者・担当者名
+  representative String
+  /// 住所 - 仕入先の所在地
+  address     String
+  /// 電話番号 - 連絡先電話番号
+  phone       String
+  /// メールアドレス - 連絡先メール
+  email       String?
+  /// 支払条件 - 支払方法・条件
+  paymentTerms String @map("payment_terms")
+  /// 取引開始日 - 取引開始年月日
+  contractDate DateTime @map("contract_date") @db.Date
+  /// 評価 - 仕入先の評価（1-5段階）
+  rating      Int?
+  /// 備考 - その他の情報
+  notes       String?
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 発注データ
+  orders      Order[]
+
+  @@map("suppliers")
+}
+
+/// 発注情報テーブル（発注管理）
+model Order {
+  /// 発注ID - 発注識別子
+  orderId     Int      @id @default(autoincrement()) @map("order_id")
+  /// 仕入先情報
+  supplier    Supplier @relation(fields: [supplierId], references: [supplierId])
+  /// 仕入先ID
+  supplierId  Int      @map("supplier_id")
+  /// 発注日 - 発注を行った日付
+  orderDate   DateTime @map("order_date") @db.Date
+  /// 納期 - 納品予定日
+  deliveryDate DateTime @map("delivery_date") @db.Date
+  /// 実納期 - 実際の納品日
+  actualDeliveryDate DateTime? @map("actual_delivery_date") @db.Date
+  /// 発注総額 - 発注金額の合計
+  totalAmount Float    @map("total_amount")
+  /// 発注状況 - 発注の進捗状況
+  status      String   @default("pending")
+  /// 備考 - 発注に関する特記事項
+  notes       String?
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 発注明細データ
+  orderDetails OrderDetail[]
+
+  @@map("orders")
+}
+
+/// 発注明細テーブル（発注商品詳細）
+model OrderDetail {
+  /// 発注明細ID - 明細識別子
+  orderDetailId Int     @id @default(autoincrement()) @map("order_detail_id")
+  /// 発注情報
+  order         Order   @relation(fields: [orderId], references: [orderId])
+  /// 発注ID
+  orderId       Int     @map("order_id")
+  /// 商品情報
+  product       Product @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId     Int     @map("product_id")
+  /// 発注数量 - 発注した数量
+  quantity      Int
+  /// 単価 - 商品の単価
+  unitPrice     Float   @map("unit_price")
+  /// 小計 - 数量×単価
+  subtotal      Float
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+
+  @@map("order_details")
+}
+
+/// 割引情報テーブル
+model Discount {
+  /// 割引ID - 割引識別子
+  discountId    Int       @id @default(autoincrement()) @map("discount_id")
+  /// 割引名 - 割引・キャンペーン名
+  name          String
+  /// 割引種別 - 割引の種類（パーセント固定額など）
+  type          String
+  /// 割引値 - 割引率または割引額
+  value         Float
+  /// 開始日 - 割引適用開始日
+  startDate     DateTime  @map("start_date") @db.Date
+  /// 終了日 - 割引適用終了日
+  endDate       DateTime  @map("end_date") @db.Date
+  /// 最小購入額 - 割引適用の最小購入金額
+  minPurchase   Float?    @map("min_purchase")
+  /// 最大割引額 - 割引の上限金額
+  maxDiscount   Float?    @map("max_discount")
+  /// 使用回数制限 - 使用可能回数
+  usageLimit    Int?      @map("usage_limit")
+  /// 使用回数 - 実際の使用回数
+  usageCount    Int       @default(0) @map("usage_count")
+  /// 有効フラグ - 割引が有効かどうか
+  isActive      Boolean   @default(true) @map("is_active")
+  /// 説明 - 割引の詳細説明
+  description   String?
+  /// 作成日時
+  createdAt     DateTime  @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime  @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("discounts")
+}
+
+/// レビュー情報テーブル（商品レビュー管理）
+model Review {
+  /// レビューID - レビュー識別子
+  reviewId    Int      @id @default(autoincrement()) @map("review_id")
+  /// 商品情報
+  product     Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId   Int      @map("product_id")
+  /// 顧客情報
+  customer    Customer @relation(fields: [customerId], references: [customerId])
+  /// 顧客ID
+  customerId  Int      @map("customer_id")
+  /// 評価 - 商品の評価（1-5段階）
+  rating      Int
+  /// レビュータイトル - レビューの見出し
+  title       String
+  /// レビュー内容 - 詳細なレビュー文
+  content     String
+  /// 購入確認 - 実際に購入したかどうか
+  isPurchased Boolean  @default(false) @map("is_purchased")
+  /// 公開フラグ - レビューを公開するかどうか
+  isPublished Boolean  @default(true) @map("is_published")
+  /// 役立ち度 - 他の顧客からの役立った数
+  helpfulCount Int     @default(0) @map("helpful_count")
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("reviews")
+}
+
+/// 配送業者情報テーブル（配送会社管理）
+model Courier {
+  /// 配送業者ID - 配送業者識別子
+  courierId   Int      @id @default(autoincrement()) @map("courier_id")
+  /// 配送業者名 - 配送会社名
+  name        String
+  /// 連絡先電話番号 - 配送業者の電話番号
+  phone       String
+  /// メールアドレス - 配送業者のメール
+  email       String?
+  /// 配送エリア - 配送可能地域
+  serviceArea String   @map("service_area")
+  /// 配送料金 - 基本配送料金
+  baseFee     Float    @map("base_fee")
+  /// 配送時間 - 通常配送時間（時間単位）
+  deliveryTime Int     @map("delivery_time")
+  /// 評価 - 配送業者の評価（1-5段階）
+  rating      Float?
+  /// 有効フラグ - 配送業者が有効かどうか
+  isActive    Boolean  @default(true) @map("is_active")
+  /// 備考 - 配送業者に関する特記事項
+  notes       String?
+  /// 作成日時
+  createdAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt   DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 配送データ
+  deliveries  Delivery[]
+
+  @@map("couriers")
+}
+
+/// 配送情報テーブル（配送管理）
+model Delivery {
+  /// 配送ID - 配送識別子
+  deliveryId     Int      @id @default(autoincrement()) @map("delivery_id")
+  /// 売上情報
+  sale           Sale     @relation(fields: [saleId], references: [saleId])
+  /// 売上ID
+  saleId         Int      @map("sale_id")
+  /// 配送業者情報
+  courier        Courier  @relation(fields: [courierId], references: [courierId])
+  /// 配送業者ID
+  courierId      Int      @map("courier_id")
+  /// 配送先住所 - 配送先の住所
+  deliveryAddress String  @map("delivery_address")
+  /// 配送日 - 配送予定日
+  deliveryDate   DateTime @map("delivery_date") @db.Date
+  /// 実配送日 - 実際の配送日
+  actualDeliveryDate DateTime? @map("actual_delivery_date") @db.Date
+  /// 配送状況 - 配送の進捗状況
+  status         String   @default("pending")
+  /// 配送料金 - 配送にかかった費用
+  fee            Float
+  /// 追跡番号 - 配送の追跡番号
+  trackingNumber String?  @map("tracking_number")
+  /// 受取人名 - 配送先の受取人名
+  recipientName  String   @map("recipient_name")
+  /// 受取人電話番号 - 受取人の連絡先
+  recipientPhone String   @map("recipient_phone")
+  /// 配送指定時間 - 希望配送時間
+  preferredTime  String?  @map("preferred_time")
+  /// 配送メモ - 配送に関する特記事項
+  notes          String?
+  /// 作成日時
+  createdAt      DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt      DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("deliveries")
+}
+
+/// 支払情報テーブル（支払管理）
+model Payment {
+  /// 支払ID - 支払識別子
+  paymentId     Int      @id @default(autoincrement()) @map("payment_id")
+  /// 売上情報
+  sale          Sale     @relation(fields: [saleId], references: [saleId])
+  /// 売上ID
+  saleId        Int      @map("sale_id")
+  /// 支払方法 - 支払手段（現金クレジットカードなど）
+  paymentMethod String   @map("payment_method")
+  /// 支払金額 - 支払われた金額
+  amount        Float
+  /// 支払日 - 支払が行われた日付
+  paymentDate   DateTime @map("payment_date") @db.Date
+  /// 支払状況 - 支払の状況
+  status        String   @default("completed")
+  /// 取引ID - 決済システムの取引ID
+  transactionId String?  @map("transaction_id")
+  /// 手数料 - 支払手数料
+  fee           Float?
+  /// 領収書番号 - 領収書の番号
+  receiptNumber String?  @map("receipt_number")
+  /// 備考 - 支払に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("payments")
+}
+
+/// 返品情報テーブル（返品管理）
+model Return {
+  /// 返品ID - 返品識別子
+  returnId      Int      @id @default(autoincrement()) @map("return_id")
+  /// 売上情報
+  sale          Sale     @relation(fields: [saleId], references: [saleId])
+  /// 売上ID
+  saleId        Int      @map("sale_id")
+  /// 返品理由 - 返品の理由
+  reason        String
+  /// 返品数量 - 返品する数量
+  quantity      Int
+  /// 返品日 - 返品が行われた日付
+  returnDate    DateTime @map("return_date") @db.Date
+  /// 返品状況 - 返品の処理状況
+  status        String   @default("pending")
+  /// 返金額 - 返金される金額
+  refundAmount  Float    @map("refund_amount")
+  /// 返金日 - 返金が行われた日付
+  refundDate    DateTime? @map("refund_date") @db.Date
+  /// 検品結果 - 返品商品の検品結果
+  inspectionResult String? @map("inspection_result")
+  /// 処理担当者 - 返品処理を行った担当者
+  handledBy     String?  @map("handled_by")
+  /// 備考 - 返品に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("returns")
+}
+
+/// 顧客ランク情報テーブル（顧客等級管理）
+model CustomerRank {
+  /// 顧客ランクID - 顧客ランク識別子
+  rankId        Int      @id @default(autoincrement()) @map("rank_id")
+  /// 顧客情報
+  customer      Customer @relation(fields: [customerId], references: [customerId])
+  /// 顧客ID
+  customerId    Int      @map("customer_id")
+  /// ランク名 - 顧客ランクの名称
+  rankName      String   @map("rank_name")
+  /// 必要購入額 - このランクに必要な購入額
+  requiredAmount Float   @map("required_amount")
+  /// 割引率 - このランクの割引率
+  discountRate  Float    @map("discount_rate")
+  /// 特典内容 - このランクの特典内容
+  benefits      String?
+  /// 達成日 - このランクを達成した日付
+  achievedDate  DateTime @map("achieved_date") @db.Date
+  /// 有効期限 - このランクの有効期限
+  expiryDate    DateTime? @map("expiry_date") @db.Date
+  /// 有効フラグ - このランクが有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// 備考 - ランクに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("customer_ranks")
+}
+
+/// イベント情報テーブル（イベント管理）
+model Event {
+  /// イベントID - イベント識別子
+  eventId       Int      @id @default(autoincrement()) @map("event_id")
+  /// イベント名 - イベントの名称
+  name          String
+  /// イベント種別 - イベントの種類
+  type          String
+  /// 開始日 - イベント開始日
+  startDate     DateTime @map("start_date") @db.Date
+  /// 終了日 - イベント終了日
+  endDate       DateTime @map("end_date") @db.Date
+  /// 場所 - イベント開催場所
+  location      String?
+  /// 説明 - イベントの詳細説明
+  description   String?
+  /// 主催者 - イベントの主催者
+  organizer     String?
+  /// 参加費 - イベント参加費用
+  fee           Float?
+  /// 定員数 - イベントの定員
+  capacity      Int?
+  /// 参加者数 - 現在の参加者数
+  participantCount Int @default(0) @map("participant_count")
+  /// 募集状況 - 参加募集の状況
+  registrationStatus String @default("open") @map("registration_status")
+  /// 有効フラグ - イベントが有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// 備考 - イベントに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+  /// 参加者データ
+  participants  EventParticipant[]
+
+  @@map("events")
+}
+
+/// イベント参加者情報テーブル（イベント参加管理）
+model EventParticipant {
+  /// 参加者ID - 参加者識別子
+  participantId Int      @id @default(autoincrement()) @map("participant_id")
+  /// イベント情報
+  event         Event    @relation(fields: [eventId], references: [eventId])
+  /// イベントID
+  eventId       Int      @map("event_id")
+  /// 顧客情報
+  customer      Customer @relation(fields: [customerId], references: [customerId])
+  /// 顧客ID
+  customerId    Int      @map("customer_id")
+  /// 申込日 - 参加申込日
+  registrationDate DateTime @map("registration_date") @db.Date
+  /// 参加状況 - 参加の状況
+  status        String   @default("registered")
+  /// 参加費 - 支払った参加費
+  paidFee       Float?   @map("paid_fee")
+  /// 支払日 - 参加費支払日
+  paymentDate   DateTime? @map("payment_date") @db.Date
+  /// 出席フラグ - イベントに出席したかどうか
+  attended      Boolean  @default(false)
+  /// 評価 - イベントの評価（1-5段階）
+  rating        Int?
+  /// フィードバック - イベントへのフィードバック
+  feedback      String?
+  /// 備考 - 参加に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("event_participants")
+}
+
+/// 広告情報テーブル（広告管理）
+model Advertisement {
+  /// 広告ID - 広告識別子
+  advertisementId Int      @id @default(autoincrement()) @map("advertisement_id")
+  /// 広告タイトル - 広告の見出し
+  title           String
+  /// 広告内容 - 広告の詳細内容
+  content         String
+  /// 広告種別 - 広告の種類（バナーポップアップなど）
+  type            String
+  /// 表示場所 - 広告を表示する場所
+  placement       String
+  /// 開始日 - 広告表示開始日
+  startDate       DateTime @map("start_date") @db.Date
+  /// 終了日 - 広告表示終了日
+  endDate         DateTime @map("end_date") @db.Date
+  /// 予算 - 広告の予算
+  budget          Float?
+  /// 表示回数 - 広告の表示回数
+  impressions     Int      @default(0)
+  /// クリック数 - 広告のクリック数
+  clicks          Int      @default(0)
+  /// コンバージョン数 - 広告からの成約数
+  conversions     Int      @default(0)
+  /// 広告主 - 広告の依頼者
+  advertiser      String?
+  /// 有効フラグ - 広告が有効かどうか
+  isActive        Boolean  @default(true) @map("is_active")
+  /// 備考 - 広告に関する特記事項
+  notes           String?
+  /// 作成日時
+  createdAt       DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt       DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("advertisements")
+}
+
+/// ニュース情報テーブル（ニュース管理a）
+model News {
+  /// ニュースID - ニュース識別子
+  newsId        Int      @id @default(autoincrement()) @map("news_id")
+  /// ニュースタイトル - ニュースのbc見出し
+  title         String
+  /// ニュース内容 - ニュースの詳細内容
+  content       String
+  /// カテゴリ - ニュースのカテゴリ
+  category      String
+  /// 著者 - ニュースの執筆者
+  author        String?
+  /// 公開日 - ニュース公開日
+  publishDate   DateTime @map("publish_date") @db.Date
+  /// 優先度 - ニュースの重要度（1-5段階）aABCDE
+  priority      Int      @default(3)
+  /// 表示回数 - ニュースの閲覧回数
+  viewCount     Int      @default(0) @map("view_count")
+  /// 公開フラグ - ニュースを公開するかどうか
+  isPublished   Boolean  @default(true) @map("is_published")
+  /// 注目フラグ - 注目ニュースかどうか
+  isFeatured    Boolean  @default(false) @map("is_featured")
+  /// タグ - ニュースのタグ（カンマ区切り）
+  tags          String?
+  /// 備考 - ニュースに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時ああああ1111111111111111111111111111111111111111111111111
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("news")
+}
+
+/// 会計情報テーブル（会計管理）
+model Accounting {
+  /// 会計ID - 会計識別子
+  accountingId  Int      @id @default(autoincrement()) @map("accounting_id")
+  /// 会計年度 - 対象年度
+  fiscalYear    Int      @map("fiscal_year")
+  /// 会計期間 - 会計期間（四半期など）
+  period        String
+  /// 勘定科目 - 勘定科目名
+  accountTitle  String   @map("account_title")
+  /// 借方金額 - 借方の金額
+  debitAmount   Float    @map("debit_amount")
+  /// 貸方金額 - 貸方の金額
+  creditAmount  Float    @map("credit_amount")
+  /// 摘要 - 取引の内容説明
+  description   String?
+  /// 取引日 - 取引が行われた日付
+  transactionDate DateTime @map("transaction_date") @db.Date
+  /// 証憑番号 - 証憑の番号
+  voucherNumber String?  @map("voucher_number")
+  /// 承認者 - 承認した担当者
+  approvedBy    String?  @map("approved_by")
+  /// 承認日 - 承認された日付
+  approvedDate  DateTime? @map("approved_date") @db.Date
+  /// 状態 - 会計処理の状態
+  status        String   @default("pending")
+  /// 備考 - 会計に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("accounting")
+}
+
+/// 税金情報テーブル（税務管理）
+model Tax {
+  /// 税金ID - 税金識別子A
+  taxId         Int      @id @default(autoincrement()) @map("tax_id")
+  /// 税金種別 - 税金の種類（消費税所得税など）
+  taxType       String   @map("tax_type")
+  /// 税率 - 適用税率（パーセント）
+  taxRate       Float    @map("tax_rate")
+  /// 課税対象額 - 課税される金額
+  taxableAmount Float    @map("taxable_amount")
+  /// 税額 - 計算された税額
+  taxAmount     Float    @map("tax_amount")
+  effectiveDate DateTime @map("effective_date") @db.Date
+  /// 適用終了日 - 税率適用終了日
+  expiryDate    DateTime? @map("expiry_date") @db.Date
+  /// 地域 - 税率が適用される地域
+  region        String?
+  /// 説明 - 税金の詳細説明
+  description   String?
+  /// A有効フラグ - 税率が有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// 備考 - 税金に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("taxes")
+}
+
+/// 監査情報テーブル（監査管理）
+model Audit {
+  /// 監査ID - 監査識別子
+  auditId       Int      @id @default(autoincrement()) @map("audit_id")
+  /// 監査種別 - 監査の種類（内部監査外部監査など）
+  auditType     String   @map("audit_type")
+  /// 監査対象 - 監査対象のテーブル名
+  targetTable   String   @map("target_table")
+  /// 対象ID - 監査対象のレコードID
+  targetId      Int      @map("target_id")
+  /// 操作種別 - 行われた操作（INSERTUPDATEDELETE）
+  operation     String
+  /// 変更前データ - 変更前の値（JSON形式）
+  beforeData    String?  @map("before_data")
+  /// 変更後データ - 変更後の値（JSON形式）
+  afterData     String?  @map("after_data")
+  /// 実行者 - 操作を行った担当者
+  executedBy    String   @map("executed_by")
+  /// 実行日時 - 操作が実行された日時
+  executedAt    DateTime @map("executed_at") @db.Timestamptz()
+  /// IPアドレス - 操作が行われたIPアドレス
+  ipAddress     String?  @map("ip_address")
+  /// ユーザーエージェント - 使用されたブラウザ情報
+  userAgent     String?  @map("user_agent")
+  /// 理由 - 操作の理由
+  reason        String?
+  /// 備考 - 監査に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+
+  @@map("audits")
+}
+
+/// バックアップ情報テーブル（バックアップ管理）
+model Backup {
+  /// バックアップID - バックアップ識別子
+  backupId      Int      @id @default(autoincrement()) @map("backup_id")
+  /// バックアップ名 - バックアップファイル名
+  backupName    String   @map("backup_name")
+  /// バックアップ種別 - バックアップの種類（フル差分など）
+  backupType    String   @map("backup_type")
+  /// ファイルパス - バックアップファイルの保存場所
+  filePath      String   @map("file_path")
+  /// ファイルサイズ - バックアップファイルのサイズ（MB）
+  fileSize      Float    @map("file_size")
+  /// 開始日時 - バックアップ開始日時
+  startTime     DateTime @map("start_time") @db.Timestamptz()
+  /// 終了日時 - バックアップ終了日時
+  endTime       DateTime? @map("end_time") @db.Timestamptz()
+  /// 所要時間 - バックアップにかかった時間（秒）
+  duration      Int?
+  /// 状態 - バックアップの状態
+  status        String   @default("running")
+  /// 対象テーブル - バックアップ対象のテーブル一覧
+  targetTables  String?  @map("target_tables")
+  /// 圧縮フラグ - バックアップファイルが圧縮されているかどうか
+  isCompressed  Boolean  @default(false) @map("is_compressed")
+  /// 暗号化フラグ - バックアップファイルが暗号化されているかどうか
+  isEncrypted   Boolean  @default(false) @map("is_encrypted")
+  /// 保存期間 - バックアップファイルの保存期間（日）
+  retentionDays Int      @default(30) @map("retention_days")
+  /// 実行者 - バックアップを実行した担当者
+  executedBy    String   @map("executed_by")
+  /// エラーメッセージ - エラーが発生した場合のメッセージ
+  errorMessage  String?  @map("error_message")
+  /// 備考 - バックアップに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("backups")
+}
+
+/// システム設定テーブル（システム設定管理）
+model SystemConfig {
+  /// 設定ID - 設定識別子
+  configId      Int      @id @default(autoincrement()) @map("config_id")
+  /// 設定キー - 設定項目のキー
+  configKey     String   @unique @map("config_key")
+  /// 設定値 - 設定項目の値
+  configValue   String   @map("config_value")
+  /// 設定種別 - 設定の種類（システムユーザーなど）
+  configType    String   @map("config_type")
+  /// 設定グループ - 設定のグループ分類
+  configGroup   String   @map("config_group")
+  /// 説明 - 設定項目の説明
+  description   String?
+  /// データ型 - 設定値のデータ型
+  dataType      String   @map("data_type")
+  /// デフォルト値 - 設定のデフォルト値
+  defaultValue  String?  @map("default_value")
+  /// 最小値 - 数値型の場合の最小値
+  minValue      Float?   @map("min_value")
+  /// 最大値 - 数値型の場合の最大値
+  maxValue      Float?   @map("max_value")
+  /// 必須フラグ - 設定が必須かどうか
+  isRequired    Boolean  @default(false) @map("is_required")
+  /// 読み取り専用フラグ - 設定が読み取り専用かどうか
+  isReadOnly    Boolean  @default(false) @map("is_read_only")
+  /// 暗号化フラグ - 設定値が暗号化されているかどうか
+  isEncrypted   Boolean  @default(false) @map("is_encrypted")
+  /// 有効フラグ - 設定が有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// 最終更新者 - 最後に更新した担当者
+  lastUpdatedBy String?  @map("last_updated_by")
+  /// 備考 - 設定に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("system_configs")
+}
+
+/// ユーザーセッション情報テーブル（セッション管理）
+model UserSession {
+  /// セッションID - セッション識別子
+  sessionId     String   @id @map("session_id")
+  /// ユーザーID - ユーザー識別子
+  userId        Int      @map("user_id")
+  /// ユーザー名 - ユーザーの名前
+  userName      String   @map("user_name")
+  /// IPアドレス - ログイン時のIPアドレス
+  ipAddress     String   @map("ip_address")
+  /// ユーザーエージェント - 使用されたブラウザ情報
+  userAgent     String   @map("user_agent")
+  /// ログイン日時 - ログインした日時
+  loginTime     DateTime @map("login_time") @db.Timestamptz()
+  /// 最終アクセス日時 - 最後にアクセスした日時
+  lastAccessTime DateTime @map("last_access_time") @db.Timestamptz()
+  /// セッション有効期限 - セッションの有効期限
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz()
+  /// 有効フラグ - セッションが有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// デバイス情報 - 使用されたデバイス情報
+  deviceInfo    String?  @map("device_info")
+  /// 位置情報 - ログイン時の位置情報
+  location      String?
+  /// ログアウト日時 - ログアウトした日時
+  logoutTime    DateTime? @map("logout_time") @db.Timestamptz()
+  /// ログアウト理由 - ログアウトの理由
+  logoutReason  String?  @map("logout_reason")
+  /// 備考 - セッションに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("user_sessions")
+}
+
+/// エラーログテーブル（エラー管理）
+model ErrorLog {
+  /// エラーID - エラー識別子
+  errorId       Int      @id @default(autoincrement()) @map("error_id")
+  /// エラー種別 - エラーの種類
+  errorType     String   @map("error_type")
+  /// エラーレベル - エラーの重要度（INFOWARNINGERRORCRITICAL）
+  errorLevel    String   @map("error_level")
+  /// エラーメッセージ - エラーの詳細メッセージ
+  errorMessage  String   @map("error_message")
+  /// スタックトレース - エラーのスタックトレース
+  stackTrace    String?  @map("stack_trace")
+  /// 発生場所 - エラーが発生した場所（ファイル名行番号など）
+  errorLocation String?  @map("error_location")
+  /// 発生日時 - エラーが発生した日時
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz()
+  /// ユーザーID - エラーが発生したユーザーID
+  userId        Int?     @map("user_id")
+  /// ユーザー名 - エラーが発生したユーザー名
+  userName      String?  @map("user_name")
+  /// IPアドレス - エラーが発生したIPアドレス
+  ipAddress     String?  @map("ip_address")
+  /// ユーザーエージェント - 使用されたブラウザ情報
+  userAgent     String?  @map("user_agent")
+  /// リクエストURL - エラーが発生したURL
+  requestUrl    String?  @map("request_url")
+  /// HTTPメソッド - 使用されたHTTPメソッド
+  httpMethod    String?  @map("http_method")
+  /// リクエストパラメータ - リクエストのパラメータ
+  requestParams String?  @map("request_params")
+  /// レスポンスコード - HTTPレスポンスコード
+  responseCode  Int?     @map("response_code")
+  /// 処理時間 - エラーが発生するまでの処理時間（ミリ秒）
+  processingTime Int?    @map("processing_time")
+  /// 解決状況 - エラーの解決状況
+  resolutionStatus String? @map("resolution_status")
+  /// 解決日時 - エラーが解決された日時
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz()
+  /// 解決者 - エラーを解決した担当者
+  resolvedBy    String?  @map("resolved_by")
+  /// 解決メモ - エラー解決時のメモ
+  resolutionNote String? @map("resolution_note")
+  /// 備考 - エラーに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("error_logs")
+}
+
+/// 通知情報テーブル（通知管理）
+model Notification {
+  /// 通知ID - 通知識別子
+  notificationId Int      @id @default(autoincrement()) @map("notification_id")
+  /// 受信者ID - 通知を受信するユーザーID
+  recipientId   Int      @map("recipient_id")
+  /// 受信者名 - 通知を受信するユーザー名
+  recipientName String   @map("recipient_name")
+  /// 通知種別 - 通知の種類
+  notificationType String @map("notification_type")
+  /// 通知タイトル - 通知のタイトル
+  title         String
+  /// 通知内容 - 通知の詳細内容
+  content       String
+  /// 優先度 - 通知の優先度（LOWMEDIUMHIGHURGENT）
+  priority      String   @default("MEDIUM")
+  /// 送信日時 - 通知が送信された日時
+  sentAt        DateTime @map("sent_at") @db.Timestamptz()
+  /// 配信方法 - 通知の配信方法（EMAILSMSPUSH）
+  deliveryMethod String  @map("delivery_method")
+  /// 配信状況 - 通知の配信状況
+  deliveryStatus String  @map("delivery_status")
+  /// 読み取り日時 - 通知が読まれた日時
+  readAt        DateTime? @map("read_at") @db.Timestamptz()
+  /// 既読フラグ - 通知が既読かどうか
+  isRead        Boolean  @default(false) @map("is_read")
+  /// アクション要求フラグ - アクションが必要かどうか
+  requiresAction Boolean @default(false) @map("requires_action")
+  /// アクション実行日時 - アクションが実行された日時
+  actionTakenAt DateTime? @map("action_taken_at") @db.Timestamptz()
+  /// 有効期限 - 通知の有効期限
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz()
+  /// 関連URL - 通知に関連するURL
+  relatedUrl    String?  @map("related_url")
+  /// 関連データ - 通知に関連するデータ（JSON形式）
+  relatedData   String?  @map("related_data")
+  /// 送信者 - 通知を送信した担当者
+  sender        String?
+  /// 送信者ID - 通知を送信したユーザーID
+  senderId      Int?     @map("sender_id")
+  /// 再送回数 - 通知の再送回数
+  retryCount    Int      @default(0) @map("retry_count")
+  /// 最終再送日時 - 最後に再送した日時
+  lastRetryAt   DateTime? @map("last_retry_at") @db.Timestamptz()
+  /// エラーメッセージ - 配信エラーの場合のメッセージ
+  errorMessage  String?  @map("error_message")
+  /// 備考 - 通知に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("notifications")
+}
+
+/// アクセス制御テーブル（権限管理）
+model AccessControl {
+  /// アクセス制御ID - アクセス制御識別子
+  accessControlId Int      @id @default(autoincrement()) @map("access_control_id")
+  /// ユーザーID - 対象ユーザーID
+  userId        Int      @map("user_id")
+  /// ユーザー名 - 対象ユーザー名
+  userName      String   @map("user_name")
+  /// リソース名 - アクセス対象のリソース名
+  resourceName  String   @map("resource_name")
+  /// リソース種別 - リソースの種類（TABLEVIEWFUNCTION）
+  resourceType  String   @map("resource_type")
+  /// 権限種別 - 権限の種類（READWRITEDELETEEXECUTE）
+  permissionType String  @map("permission_type")
+  /// 権限レベル - 権限のレベル（OWNERADMINUSERGUEST）
+  permissionLevel String @map("permission_level")
+  /// 許可フラグ - アクセスが許可されているかどうか
+  isAllowed     Boolean  @default(true) @map("is_allowed")
+  /// 条件 - アクセス許可の条件
+  condition     String?
+  /// 有効開始日 - 権限の有効開始日
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  /// 有効終了日 - 権限の有効終了日
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  /// 付与者 - 権限を付与した担当者
+  grantedBy     String   @map("granted_by")
+  /// 付与日時 - 権限が付与された日時
+  grantedAt     DateTime @map("granted_at") @db.Timestamptz()
+  /// 最終アクセス日時 - 最後にアクセスした日時
+  lastAccessAt  DateTime? @map("last_access_at") @db.Timestamptz()
+  /// アクセス回数 - 累計アクセス回数
+  accessCount   Int      @default(0) @map("access_count")
+  /// IP制限 - アクセス可能なIPアドレス範囲
+  ipRestriction String?  @map("ip_restriction")
+  /// 時間制限 - アクセス可能な時間帯
+  timeRestriction String? @map("time_restriction")
+  /// 理由 - 権限付与の理由
+  reason        String?
+  /// 備考 - アクセス制御に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("access_controls")
+}
+
+/// メンテナンス情報テーブル（メンテナンス管理）
+model Maintenance {
+  /// メンテナンスID - メンテナンス識別子
+  maintenanceId Int      @id @default(autoincrement()) @map("maintenance_id")
+  /// メンテナンス種別 - メンテナンスの種類
+  maintenanceType String @map("maintenance_type")
+  /// タイトル - メンテナンスのタイトル
+  title         String
+  /// 説明 - メンテナンスの詳細説明
+  description   String
+  /// 開始予定日時 - メンテナンス開始予定日時
+  scheduledStartTime DateTime @map("scheduled_start_time") @db.Timestamptz()
+  /// 終了予定日時 - メンテナンス終了予定日時
+  scheduledEndTime DateTime @map("scheduled_end_time") @db.Timestamptz()
+  /// 実際の開始日時 - 実際のメンテナンス開始日時
+  actualStartTime DateTime? @map("actual_start_time") @db.Timestamptz()
+  /// 実際の終了日時 - 実際のメンテナンス終了日時
+  actualEndTime DateTime? @map("actual_end_time") @db.Timestamptz()
+  /// 状態 - メンテナンスの状態
+  status        String   @default("scheduled")
+  /// 優先度 - メンテナンスの優先度
+  priority      String   @default("MEDIUM")
+  /// 影響範囲 - メンテナンスの影響範囲
+  impactScope   String   @map("impact_scope")
+  /// 影響度 - メンテナンスの影響度
+  impactLevel   String   @map("impact_level")
+  /// 担当者 - メンテナンス担当者
+  assignedTo    String   @map("assigned_to")
+  /// 担当者ID - メンテナンス担当者ID
+  assignedToId  Int?     @map("assigned_to_id")
+  /// 承認者 - メンテナンスを承認した担当者
+  approvedBy    String?  @map("approved_by")
+  /// 承認日時 - メンテナンスが承認された日時
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz()
+  /// 通知フラグ - ユーザーに通知するかどうか
+  notifyUsers   Boolean  @default(true) @map("notify_users")
+  /// 通知メッセージ - ユーザーへの通知メッセージ
+  notificationMessage String? @map("notification_message")
+  /// 自動実行フラグ - 自動実行するかどうか
+  isAutomated   Boolean  @default(false) @map("is_automated")
+  /// 実行スクリプト - 実行するスクリプト
+  executionScript String? @map("execution_script")
+  /// 結果 - メンテナンスの結果
+  result        String?
+  /// エラーメッセージ - エラーが発生した場合のメッセージ
+  errorMessage  String?  @map("error_message")
+  /// 備考 - メンテナンスに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("maintenances")
+}
+
+/// APIキー管理テーブル（API管理）
+model ApiKey {
+  /// APIキーID - APIキー識別子
+  apiKeyId      Int      @id @default(autoincrement()) @map("api_key_id")
+  /// キー名 - APIキーの名前
+  keyName       String   @map("key_name")
+  /// APIキー - 実際のAPIキー
+  apiKey        String   @unique @map("api_key")
+  /// シークレット - APIシークレット
+  secret        String?
+  /// 所有者 - APIキーの所有者
+  owner         String
+  /// 所有者ID - APIキーの所有者ID
+  ownerId       Int      @map("owner_id")
+  /// 権限レベル - APIキーの権限レベル
+  permissionLevel String @map("permission_level")
+  /// 許可されるエンドポイント - アクセス可能なエンドポイント
+  allowedEndpoints String? @map("allowed_endpoints")
+  /// レート制限 - 1時間あたりのリクエスト制限
+  rateLimit     Int      @default(1000) @map("rate_limit")
+  /// 使用回数 - 累計使用回数
+  usageCount    Int      @default(0) @map("usage_count")
+  /// 最終使用日時 - 最後に使用された日時
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz()
+  /// 有効期限 - APIキーの有効期限
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz()
+  /// 有効フラグ - APIキーが有効かどうか
+  isActive      Boolean  @default(true) @map("is_active")
+  /// IP制限 - アクセス可能なIPアドレス範囲
+  ipRestriction String?  @map("ip_restriction")
+  /// リファラー制限 - アクセス可能なリファラー
+  referrerRestriction String? @map("referrer_restriction")
+  /// 作成理由 - APIキー作成の理由
+  creationReason String? @map("creation_reason")
+  /// 備考 - APIキーに関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("api_keys")
+}
+
+/// データベース統計テーブル（統計管理）
+model DatabaseStatistics {
+  /// 統計ID - 統計識別子
+  statisticsId  Int      @id @default(autoincrement()) @map("statistics_id")
+  /// 統計日 - 統計を取得した日付
+  statisticsDate DateTime @map("statistics_date") @db.Date
+  /// テーブル名 - 統計対象のテーブル名
+  tableName     String   @map("table_name")
+  /// レコード数 - テーブルのレコード数
+  recordCount   Int      @map("record_count")
+  /// データサイズ - テーブルのデータサイズ（MB）
+  dataSize      Float    @map("data_size")
+  /// インデックスサイズ - テーブルのインデックスサイズ（MB）
+  indexSize     Float    @map("index_size")
+  /// 最終更新日時 - テーブルの最終更新日時
+  lastUpdateTime DateTime? @map("last_update_time") @db.Timestamptz()
+  /// 読み取り回数 - テーブルの読み取り回数
+  readCount     Int      @default(0) @map("read_count")
+  /// 書き込み回数 - テーブルの書き込み回数
+  writeCount    Int      @default(0) @map("write_count")
+  /// 削除回数 - テーブルの削除回数
+  deleteCount   Int      @default(0) @map("delete_count")
+  /// 平均レスポンス時間 - テーブルアクセスの平均レスポンス時間（ミリ秒）
+  avgResponseTime Float? @map("avg_response_time")
+  /// 最大レスポンス時間 - テーブルアクセスの最大レスポンス時間（ミリ秒）
+  maxResponseTime Float? @map("max_response_time")
+  /// 最小レスポンス時間 - テーブルアクセスの最小レスポンス時間（ミリ秒）
+  minResponseTime Float? @map("min_response_time")
+  /// エラー発生回数 - テーブルアクセスでのエラー発生回数
+  errorCount    Int      @default(0) @map("error_count")
+  /// 断片化率 - テーブルの断片化率（パーセント）
+  fragmentationRate Float? @map("fragmentation_rate")
+  /// 使用率 - テーブルの使用率（パーセント）
+  usageRate     Float?   @map("usage_rate")
+  /// 成長率 - テーブルの成長率（パーセント）
+  growthRate    Float?   @map("growth_rate")
+  /// 備考 - 統計に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+
+  @@map("database_statistics")
+}
+
+/// 在庫移動履歴テーブル（在庫移動管理）
+model InventoryMovement {
+  /// 移動ID - 在庫移動識別子
+  movementId    Int      @id @default(autoincrement()) @map("movement_id")
+  /// 商品情報
+  product       Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId     Int      @map("product_id")
+  /// 移動種別 - 移動の種類（入庫出庫移動調整）
+  movementType  String   @map("movement_type")
+  /// 移動元店舗 - 移動元の店舗
+  fromStore     Store?   @relation("FromStore", fields: [fromStoreId], references: [storeId])
+  /// 移動元店舗ID
+  fromStoreId   Int?     @map("from_store_id")
+  /// 移動先店舗 - 移動先の店舗
+  toStore       Store?   @relation("ToStore", fields: [toStoreId], references: [storeId])
+  /// 移動先店舗ID
+  toStoreId     Int?     @map("to_store_id")
+  /// 移動数量 - 移動した数量
+  quantity      Int
+  /// 移動前在庫数 - 移動前の在庫数
+  beforeQuantity Int     @map("before_quantity")
+  /// 移動後在庫数 - 移動後の在庫数
+  afterQuantity Int     @map("after_quantity")
+  /// 単価 - 移動時の商品単価
+  unitPrice     Float    @map("unit_price")
+  /// 合計金額 - 移動の合計金額
+  totalAmount   Float    @map("total_amount")
+  /// 移動日時 - 移動が行われた日時
+  movementDate  DateTime @map("movement_date") @db.Timestamptz()
+  /// 実行者 - 移動を実行した担当者
+  executedBy    String   @map("executed_by")
+  /// 実行者ID - 移動を実行した担当者ID
+  executedById  Int?     @map("executed_by_id")
+  /// 承認者 - 移動を承認した担当者
+  approvedBy    String?  @map("approved_by")
+  /// 承認日時 - 移動が承認された日時
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz()
+  /// 理由 - 移動の理由
+  reason        String?
+  /// 状態 - 移動の状態
+  status        String   @default("pending")
+  /// 関連伝票番号 - 関連する伝票の番号
+  relatedDocumentNumber String? @map("related_document_number")
+  /// 備考 - 移動に関する特記事項
+  notes         String?
+  /// 作成日時
+  createdAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt     DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("inventory_movements")
+}
+
+/// 品質管理テーブル（品質管理）
+model QualityControl {
+  /// 品質管理ID - 品質管理識別子
+  qualityControlId Int      @id @default(autoincrement()) @map("quality_control_id")
+  /// 商品情報
+  product          Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId        Int      @map("product_id")
+  /// 検査種別 - 検査の種類（入荷検査出荷検査定期検査）
+  inspectionType   String   @map("inspection_type")
+  inspectionDate   DateTime @map("inspection_date") @db.Date
+  /// 検査者 - 検査を実施した担当者
+  inspector        String
+  /// 検査者ID - 検査を実施した担当者ID
+  inspectorId      Int?     @map("inspector_id")
+  /// 検査結果 - 検査の結果（合格不合格条件付き合格）ab
+  inspectionResult String   @map("inspection_result")
+  /// 検査項目数 - 検査した項目数
+  inspectionItems  Int      @map("inspection_items")
+  /// 合格項目数 - 合格した項目数
+  passedItems      Int      @map("passed_items")
+  /// 不合格項目数 - 不合格した項目数
+  failedItems      Int      @map("failed_items")
+  /// 合格率 - 検査の合格率（パーセント）
+  passRate         Float    @map("pass_rate")
+  /// 検査基準 - 適用した検査基準
+  inspectionStandard String? @map("inspection_standard")
+  /// 検査方法 - 検査の方法
+  inspectionMethod String?  @map("inspection_method")
+  /// 検査機器 - 使用した検査機器
+  inspectionEquipment String? @map("inspection_equipment")
+  /// 温度 - 検査時の温度
+  temperature      Float?
+  /// 湿度 - 検査時の湿度
+  humidity         Float?
+  /// 検査詳細 - 検査の詳細内容
+  inspectionDetails String? @map("inspection_details")
+  /// 不合格理由 - 不合格の場合の理由
+  failureReason    String?  @map("failure_reason")
+  /// 改善提案 - 改善提案
+  improvementSuggestion String? @map("improvement_suggestion")
+  /// 再検査要求フラグ - 再検査が必要かどうか
+  requiresReinspection Boolean @default(false) @map("requires_reinspection")
+  /// 再検査日 - 再検査予定日
+  reinspectionDate DateTime? @map("reinspection_date") @db.Date
+  /// 証明書番号 - 品質証明書の番号
+  certificateNumber String? @map("certificate_number")
+  /// 有効期限 - 品質証明書の有効期限
+  validUntil       DateTime? @map("valid_until") @db.Date
+  /// 承認者 - 検査結果を承認した担当者
+  approvedBy       String?  @map("approved_by")
+  /// 承認日時 - 検査結果が承認された日時
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz()
+  /// 備考 - 品質管理に関する特記事項
+  notes            String?
+  /// 作成日時
+  createdAt        DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt        DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("quality_controls")
+}
+
+/// 売上予測テーブル（売上予測管理）
+model SalesForecast {
+  /// 予測ID - 売上予測識別子
+  forecastId     Int      @id @default(autoincrement()) @map("forecast_id")
+  /// 商品情報
+  product        Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId      Int      @map("product_id")
+  /// 店舗情報
+  store          Store    @relation(fields: [storeId], references: [storeId])
+  /// 店舗ID
+  storeId        Int      @map("store_id")
+  /// 予測期間 - 予測対象期間
+  forecastPeriod String   @map("forecast_period")
+  /// 予測開始日 - 予測期間の開始日
+  forecastStartDate DateTime @map("forecast_start_date") @db.Date
+  /// 予測終了日 - 予測期間の終了日
+  forecastEndDate DateTime @map("forecast_end_date") @db.Date
+  /// 予測数量 - 予測される販売数量
+  forecastQuantity Int    @map("forecast_quantity")
+  /// 予測売上金額 - 予測される売上金額
+  forecastAmount Float    @map("forecast_amount")
+  /// 実績数量 - 実際の販売数量
+  actualQuantity Int?     @map("actual_quantity")
+  /// 実績売上金額 - 実際の売上金額
+  actualAmount   Float?   @map("actual_amount")
+  /// 精度 - 予測の精度（パーセント）
+  accuracy       Float?
+  /// 誤差 - 予測と実績の誤差（パーセント）
+  deviation      Float?
+  /// 予測モデル - 使用した予測モデル
+  forecastModel  String   @map("forecast_model")
+  /// 予測アルゴリズム - 使用した予測アルゴリズム
+  forecastAlgorithm String? @map("forecast_algorithm")
+  /// 信頼度 - 予測の信頼度（パーセント）
+  confidence     Float?
+  /// 季節性要因 - 季節性の影響度
+  seasonalityFactor Float? @map("seasonality_factor")
+  /// トレンド要因 - トレンドの影響度
+  trendFactor    Float?   @map("trend_factor")
+  /// 外部要因 - 外部要因の影響度
+  externalFactor Float?   @map("external_factor")
+  /// 予測実行日時 - 予測を実行した日時
+  forecastExecutedAt DateTime @map("forecast_executed_at") @db.Timestamptz()
+  /// 予測実行者 - 予測を実行した担当者
+  forecastExecutedBy String @map("forecast_executed_by")
+  /// 予測実行者ID - 予測を実行した担当者ID
+  forecastExecutedById Int? @map("forecast_executed_by_id")
+  /// 更新頻度 - 予測の更新頻度
+  updateFrequency String? @map("update_frequency")
+  /// 次回更新日 - 次回予測更新予定日
+  nextUpdateDate DateTime? @map("next_update_date") @db.Date
+  /// 有効フラグ - 予測が有効かどうか
+  isActive       Boolean  @default(true) @map("is_active")
+  /// 備考 - 売上予測に関する特記事項
+  notes          String?
+  /// 作成日時
+  createdAt      DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt      DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("sales_forecasts")
+}
+
+/// 季節性分析テーブル（季節性分析管理）
+model SeasonalityAnalysis {
+  /// 季節性分析ID - 季節性分析識別子
+  seasonalityId    Int      @id @default(autoincrement()) @map("seasonality_id")
+  /// 商品情報
+  product          Product  @relation(fields: [productId], references: [productId])
+  /// 商品ID
+  productId        Int      @map("product_id")
+  /// 年度 - 分析対象年度
+  year             Int
+  /// 季節 - 季節（春夏秋冬）
+  season           String
+  /// 月 - 月（1-12）
+  month            Int
+  /// 売上数量 - 季節ごとの売上数量
+  salesQuantity    Int      @map("sales_quantity")
+  /// 売上金額 - 季節ごとの売上金額
+  salesAmount      Float    @map("sales_amount")
+  /// 前年同期比 - 前年同期との比較（パーセント）
+  yearOverYearGrowth Float? @map("year_over_year_growth")
+  /// 前月比 - 前月との比較（パーセント）
+  monthOverMonthGrowth Float? @map("month_over_month_growth")
+  /// 季節指数 - 季節性の指数
+  seasonalityIndex Float?   @map("seasonality_index")
+  /// トレンド指数 - トレンドの指数
+  trendIndex       Float?   @map("trend_index")
+  /// 異常値フラグ - 異常値かどうか
+  isAnomalous      Boolean  @default(false) @map("is_anomalous")
+  /// 信頼度 - 分析の信頼度（パーセント）
+  confidence       Float?
+  /// 分析実行日時 - 分析を実行した日時
+  analyzedAt       DateTime @map("analyzed_at") @db.Timestamptz()
+  /// 分析実行者 - 分析を実行した担当者
+  analyzedBy       String   @map("analyzed_by")
+  /// 備考 - 季節性分析に関する特記事項
+  notes            String?
+  /// 作成日時
+  createdAt        DateTime @default(dbgenerated("statement_timestamp()")) @map("created_at") @db.Timestamptz()
+  /// 更新日時
+  updatedAt        DateTime @default(dbgenerated("statement_timestamp()")) @map("updated_at") @db.Timestamptz()
+
+  @@map("seasonality_analyses")
+}
