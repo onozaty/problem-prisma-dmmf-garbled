@@ -3,10 +3,8 @@ generator client {
   previewFeatures = ["views"]
 }
 
-generator comments {
-  provider                  = "prisma-db-comments-generator"
-  ignorePattern             = "_view$"
-  includeEnumInFieldComment = true
+generator dmmf {
+  provider = "npx tsx generator.ts"
 }
 
 datasource db {
@@ -14,9 +12,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// 商品タイプ列挙型
+/// 商品タイプ列挙型123456711111111111
 enum ProductType {
-  /// 書籍 - 小説実用書技術書など
+  /// 書籍 - 小説実用書技術書など1231111111111あいうえおかきくけこさしすせそたちつてと1111
   BOOK
   /// おもちゃ - 知育玩具フィギュアなど
   TOY

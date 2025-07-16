@@ -2,7 +2,7 @@
   "name": "problem-prisma-dmmf-garbled",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,8 +17,8 @@
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   },
-  "type": "module",
   "dependencies": {
-    "@prisma/client": "6.12.0"
+    "@prisma/client": "6.12.0",
+    "@prisma/generator-helper": "^6.12.0"
   }
 }
